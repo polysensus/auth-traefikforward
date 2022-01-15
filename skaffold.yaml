@@ -1,0 +1,26 @@
+# To learn more about the skaffold.yaml schema visit
+# https://skaffold.dev/docs/references/yaml/
+apiVersion: skaffold/v2beta26
+kind: Config
+build:
+  tagPolicy:
+    sha256: {}
+  artifacts:
+  - context: .
+    image: authex
+
+deploy:
+  kustomize:
+    paths:
+      - k8s/iona-debug
+    
+profiles:
+- name: cloudbuild
+  build:
+    googleCloudBuild: {}
+- name: local
+  build:
+    local:
+      push: false
+      useBuildkit: true
+      concurrency: 4

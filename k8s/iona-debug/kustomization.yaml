@@ -1,0 +1,7 @@
+namespace: iona
+resources:
+  - ./../base
+configMapGenerator:
+  - name: authex
+    literals:
+      - AUTHEX_ADDRESS=0.0.0.0:8401

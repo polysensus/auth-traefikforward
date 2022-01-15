@@ -1,0 +1,14 @@
+---
+version: '3'
+silent: true
+env:
+  SKAFFOLD_DEFAULT_REPO: '{{.SKAFFOLD_DEFAULT_REPO | default "eu.gcr.io/iona-1"}}'
+  PROFILE: '{{.PROFILE | default ""}}'
+  TAG: '{{.TAG | default ""}}'
+
+tasks:
+  build:
+    desc: "build the images"
+    cmds:
+      - |
+        skaffold build ${PROFILE:+-p $PROFILE} ${TAG:+-t $TAG}

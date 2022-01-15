@@ -1,0 +1,35 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run on Kubernetes",
+      "type": "cloudcode.kubernetes",
+      "request": "launch",
+      "skaffoldConfig": "${workspaceFolder}/skaffold.yaml",
+      "watch": true,
+      "cleanUp": true,
+      "portForward": true,
+      "debug": [
+        {
+          "image": "eu.gcr.io/iona-1/authex",
+          "containerName": "server",
+          "sourceFileMap": {
+            "${workspaceFolder}": "/authex"
+          }
+        }
+      ],
+      "imageRegistry": "eu.gcr.io/iona-1"
+    },
+    {
+      "type": "go",
+      "request": "launch",
+      "name": "Launch (local)",
+      "mode": "auto",
+      "program": "${workspaceFolder}/go/",
+      "env": {
+        "AUTHEX_ADDRESS": "123.4.5.6:123"
+      },
+      "args": []
+    }
+  ]
+}
