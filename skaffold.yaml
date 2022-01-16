@@ -6,21 +6,26 @@ build:
   tagPolicy:
     sha256: {}
   artifacts:
-  - context: .
-    image: authex
+    - context: .
+      image: authex
 
 deploy:
   kustomize:
     paths:
       - k8s/iona-debug
-    
 profiles:
-- name: cloudbuild
-  build:
-    googleCloudBuild: {}
-- name: local
-  build:
-    local:
-      push: false
-      useBuildkit: true
-      concurrency: 4
+  - name: cloudbuild
+    build:
+      googleCloudBuild: {}
+
+  - name: push
+    build:
+      local:
+        push: true
+
+  - name: local
+    build:
+      local:
+        push: false
+        useBuildkit: true
+        concurrency: 4

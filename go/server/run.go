@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"time"
 
+	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 )
 
@@ -19,6 +22,7 @@ const (
 
 type Config struct {
 	Address       string
+	Prefix        string
 	ShutdownGrace time.Duration
 	WriteTimeout  time.Duration
 	ReadTimeout   time.Duration
@@ -28,6 +32,7 @@ type Config struct {
 func NewConfig() Config {
 	cfg := Config{
 		Address:       fmt.Sprintf("0.0.0.0:%d", DefaultPort),
+		Prefix:        "",
 		ShutdownGrace: time.Second * 15,
 		WriteTimeout:  time.Second * 15,
 		ReadTimeout:   time.Second * 15,
@@ -62,7 +67,32 @@ func (s *Server) Serve() {
 	// Add your routes as needed
 	r := mux.NewRouter()
 	h := NewExchanger(s.cfg)
-	r.Handle("/exchange", h)
+
+	prefix := "/"
+	if s.cfg.Prefix != "" {
+
+		// Normalise to exactly one leading '/'
+		prefix = "/" + strings.TrimLeft(s.cfg.Prefix, "/")
+
+		u, err := url.ParseRequestURI(prefix)
+		if err != nil {
+			log.Fatalf("bad route prefix: %v", err)
+		}
+		prefix = u.Path
+	}
+	path := fmt.Sprintf("%sexchange", prefix)
+	r.Handle(path, h)
+
+	// Point the ForwardAuth at this endpoint to dump the resulting forwarded request
+	// !!! This logs the bearer token value ...
+	r.HandleFunc(fmt.Sprintf("%sdump-headers", prefix), func(rw http.ResponseWriter, rq *http.Request) {
+		log.Println("dump-headers", "-----")
+		for k, v := range rq.Header {
+			log.Println(k, v)
+		}
+	})
+
+	logged := handlers.LoggingHandler(os.Stdout, r)
 
 	srv := &http.Server{
 		Addr: s.cfg.Address,
@@ -70,8 +100,11 @@ func (s *Server) Serve() {
 		WriteTimeout: s.cfg.WriteTimeout,
 		ReadTimeout:  s.cfg.ReadTimeout,
 		IdleTimeout:  s.cfg.IdleTimeout,
-		Handler:      r, // Pass our instance of gorilla/mux in.
+		Handler:      logged, // Pass our instance of gorilla/mux in.
+		// Handler: r, // Pass our instance of gorilla/mux in.
 	}
+
+	log.Println("serving:", srv.Addr, "path:", path)
 
 	// Run our server in a goroutine so that it doesn't block.
 	go func() {

@@ -18,15 +18,17 @@ spec:
         app: authex
     spec:
       containers:
-      - name: server
-        # image: eu.gcr.io/iona-1/authex 
-        image: authex 
-        ports:
-        - containerPort: 8401
-        env:
-        - name: PORT
-          value: "8401"
-        readinessProbe:
-          tcpSocket:
-            port: 8401
-          initialDelaySeconds: 5
+        - name: server
+          # image: eu.gcr.io/iona-1/authex
+          image: authex
+          ports:
+            - containerPort: 8401
+          env:
+            - name: AUTHEX_ADDRESS
+              value: 0.0.0.0:8401
+            - name: AUTHEX_PREFIX
+              value: "node/"
+          readinessProbe:
+            tcpSocket:
+              port: 8401
+            initialDelaySeconds: 5

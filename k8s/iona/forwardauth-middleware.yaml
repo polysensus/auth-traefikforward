@@ -1,0 +1,10 @@
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: ethnodetokenexchange
+spec:
+  forwardAuth:
+    address: http://authex:8401/node/exchange
+    authResponseHeaders:
+      - Authorization
+    trustForwardHeader: true

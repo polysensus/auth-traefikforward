@@ -1,0 +1,21 @@
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: authex
+  namespace: iona
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`iona.thaumagen.io`) && PathPrefix(`/node`)
+      kind: Rule
+      services:
+        - kind: Service
+          name: authex
+          scheme: http
+          # port: 80
+          port: http
+      middlewares:
+        - name: ethnodetokenexchange
+  tls:
+    secretName: wild-thaumagen-io-cert

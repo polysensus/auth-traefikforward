@@ -1,0 +1,10 @@
+namespace: iona
+resources:
+  - ./../base
+  - ./ingressroute.yaml
+  - ./forwardauth-middleware.yaml
+configMapGenerator:
+  - name: authex
+    literals:
+      - AUTHEX_ADDRESS=0.0.0.0:8401
+      - AUTHEX_PREFIX="/node/"

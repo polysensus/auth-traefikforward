@@ -10,11 +10,18 @@
       "cleanUp": true,
       "portForward": true,
       "debug": [
+        // {
+        //   "image": "eu.gcr.io/iona-1/authex",
+        //   "containerName": "server",
+        //   "sourceFileMap": {
+        //     "${workspaceFolder}": "/authex"
+        //   }
+        // },
         {
-          "image": "eu.gcr.io/iona-1/authex",
+          "image": "authex",
           "containerName": "server",
           "sourceFileMap": {
-            "${workspaceFolder}": "/authex"
+            "${workspaceFolder}/go": "/authex"
           }
         }
       ],

@@ -1,0 +1,7 @@
+images:
+  - name: authex
+    # Taskfile.yml build/apply needs these set
+    newName: eu.gcr.io/iona-1/authex
+    newTag: iona-latest
+resources:
+  - ./../iona

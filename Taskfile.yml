@@ -2,9 +2,23 @@
 version: '3'
 silent: true
 env:
+  CONTEXT: iona-1
+  CLUSTER: gke_iona-1_europe-west2-a_kluster
+  KUBECTL: kubectl --context {{.CONTEXT}} --cluster {{.CLUSTER}}
+  KUSTOMIZE: kustomize
+  CLUSTER_NAMESPACE: iona
+  NAMESPACE: '{{.NAMESPACE| default .CLUSTER_NAMESPACE}}'
+
+  APPNAME: '{{.APPNAME | default "authex"}}'
+
   SKAFFOLD_DEFAULT_REPO: '{{.SKAFFOLD_DEFAULT_REPO | default "eu.gcr.io/iona-1"}}'
-  PROFILE: '{{.PROFILE | default ""}}'
-  TAG: '{{.TAG | default ""}}'
+  PROFILE: '{{.PROFILE | default "local"}}'
+  TAG: '{{.TAG | default "iona-latest"}}'
+  PORT: '{{.PORT | default "8401"}}'
+  TOKEN: '{{.TOKEN | default "xxxinvalidxxx"}}'
+  HOST: '{{.HOST | default "http://127.0.0.1:8401"}}'
+
+dotenv: [".env", "../.env", '{{.ENV}}/.env', '{{.HOME}}/.env']
 
 tasks:
   build:
@@ -12,3 +26,46 @@ tasks:
     cmds:
       - |
         skaffold build ${PROFILE:+-p $PROFILE} ${TAG:+-t $TAG}
+
+  apply:
+    desc: |
+      apply kustomized k8s manifests (use if *not* using vscode cloud debug)
+    cmds:
+      - |
+        {{.KUSTOMIZE}} build k8s/iona-apply | {{.KUBECTL}} apply -f -
+
+  down:
+    desc: un-apply kustomized k8s manifests
+    cmds:
+      - |
+        {{.KUSTOMIZE}} build k8s/iona-apply | {{.KUBECTL}} delete -f -
+
+  pf:
+    desc: 'port forward to $APPNAME'
+    cmds:
+      - |
+        POD=$($KUBECTL -n $NAMESPACE get pod \
+           --selector=app=$APPNAME \
+           --no-headers -o custom-columns=":metadata.name")
+        echo $POD
+        # {{.KUBECTL}} -n {{.N}} port-forward --address localhost pod/$POD 8080
+        $KUBECTL -n $NAMESPACE port-forward pod/$POD $PORT
+  logs:
+    desc: 'port forward to $APPNAME'
+    cmds:
+      - |
+        POD=$($KUBECTL -n $NAMESPACE get pod \
+           --selector=app=$APPNAME \
+           --no-headers -o custom-columns=":metadata.name")
+        echo $POD
+        # {{.KUBECTL}} -n {{.N}} port-forward --address localhost pod/$POD 8080
+        $KUBECTL -n $NAMESPACE logs $POD {{.CLI_ARGS}}
+
+  exchange:
+    desc: 'do the exchange'
+    cmds:
+      - |
+        echo $TOKEN
+        curl -k -v \
+          -H "Authorization: Bearer $TOKEN" \
+          $HOST/dump-headers
