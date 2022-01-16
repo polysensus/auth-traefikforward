@@ -23,6 +23,9 @@ const (
 type Config struct {
 	Address       string
 	Prefix        string
+	ExchangeURL   string
+	ClientID      string
+	ClientSecret  string
 	ShutdownGrace time.Duration
 	WriteTimeout  time.Duration
 	ReadTimeout   time.Duration
@@ -33,6 +36,9 @@ func NewConfig() Config {
 	cfg := Config{
 		Address:       fmt.Sprintf("0.0.0.0:%d", DefaultPort),
 		Prefix:        "",
+		ExchangeURL:   "",
+		ClientID:      "",
+		ClientSecret:  "",
 		ShutdownGrace: time.Second * 15,
 		WriteTimeout:  time.Second * 15,
 		ReadTimeout:   time.Second * 15,

@@ -38,6 +38,16 @@ func main() {
 	if absent. You must include trailing '/' if a full segment is intended
 	`)
 
+	f.StringVar(
+		&cfg.ExchangeURL, "exchangeurl", cfg.ExchangeURL, "scheme://host:port[/path] endpoint for the token exchange",
+	)
+	f.StringVar(
+		&cfg.ClientID, "clientid", cfg.ClientID, "relying party client id to present to the token exchange",
+	)
+	f.StringVar(
+		&cfg.ClientSecret, "clientsecret", cfg.ClientSecret, "relying party client secret to present to the token exchange",
+	)
+
 	f.DurationVar(
 		&cfg.ShutdownGrace, "shutdown-grace", cfg.ShutdownGrace, `
 	Server shutdown gace period.

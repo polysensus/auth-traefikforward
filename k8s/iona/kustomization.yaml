@@ -7,4 +7,7 @@ configMapGenerator:
   - name: authex
     literals:
       - AUTHEX_ADDRESS=0.0.0.0:8401
-      - AUTHEX_PREFIX="/node/"
+      - AUTHEX_PREFIX=/node/
+      - AUTHEX_EXCHANGEURL=http://tokenendpoint:3000/token
+      - AUTHEX_CLIENTID=iona-1
+      - AUTHEX_CLIENTSECRET=iona-1-password

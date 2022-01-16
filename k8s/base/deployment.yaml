@@ -28,6 +28,13 @@ spec:
               value: 0.0.0.0:8401
             - name: AUTHEX_PREFIX
               value: "node/"
+            - name: AUTHEX_EXCHANGEURL
+              value: http://tokenendpoint:3000/token
+            - name: AUTHEX_CLIENTID
+              value: iona-1
+            - name: AUTHEX_CLIENTSECRET
+              value: iona-1-password
+
           readinessProbe:
             tcpSocket:
               port: 8401
