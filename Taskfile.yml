@@ -69,7 +69,7 @@ tasks:
         # curl -k -v \
         #   -H "Authorization: Bearer $TOKEN" \
         #   $HOST/dump-headers?scope=eth_sendRawTransaction
-        curl -k $HOST/dump-headers \
+        curl -v -k $HOST \
           -H "Authorization: Bearer $TOKEN" \
           -H "Content-Type: application/json" \
           --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":83}'

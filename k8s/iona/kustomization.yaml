@@ -1,13 +1,14 @@
-namespace: iona
+namespace: rrr9
 resources:
   - ./../base
-  - ./ingressroute.yaml
+  #- ./ingressroute.yaml
   - ./forwardauth-middleware.yaml
+  - ./middleware-removepath.yaml
 configMapGenerator:
   - name: authex
     literals:
       - AUTHEX_ADDRESS=0.0.0.0:8401
       - AUTHEX_PREFIX=/node/
-      - AUTHEX_EXCHANGEURL=http://tokenendpoint:3000/token
+      - AUTHEX_EXCHANGEURL=http://tokenendpoint.iona:3000/token
       - AUTHEX_CLIENTID=iona-1
       - AUTHEX_CLIENTSECRET=iona-1-password

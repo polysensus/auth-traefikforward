@@ -28,6 +28,7 @@ const (
 	contentTypeURLEncoded       = "application/x-www-form-urlencoded"
 	grantTypeTokenExchange      = "urn:ietf:params:oauth:grant-type:token-exchange"
 	idTokenType                 = "urn:ietf:params:oauth:token-type:id_token"
+	xForwardedUri               = "X-Forwarded-Uri"
 )
 
 type logger interface {
@@ -99,7 +100,13 @@ func (x *Exchanger) exchangeForQuorum(r *http.Request) (string, error) {
 	// 	return "", err
 	// }
 
-	parts := strings.Split(r.URL.Path, "/")
+	// Infer the desired audience from the original path if the header is present
+	path := r.Header.Get(xForwardedUri)
+	if path == "" {
+		path = r.URL.Path
+	}
+
+	parts := strings.Split(path, "/")
 	if len(parts) == 0 {
 		return "", errors.New(
 			"at least one url path segment is required to identify the node audience (--identity)",
