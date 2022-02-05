@@ -29,7 +29,7 @@ spec:
             - name: AUTHEX_PREFIX
               value: "node/"
             - name: AUTHEX_EXCHANGEURL
-              value: http://tokenendpoint.iona:3000/token
+              value: http://tokenendpoint:3000/token
             - name: AUTHEX_CLIENTID
               value: iona-1
             - name: AUTHEX_CLIENTSECRET
