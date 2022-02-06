@@ -2,6 +2,7 @@
 
 Integrates traefik ForwardAuth with a secure token exchange.
 
-# Plan
+The requested audience for the new token is taken from the last URI segment.
+The scopes are assumed to be configured in the client definition of the token
+exchange.
 
-* 502 Bad Gateway' caused by: dial tcp 10.2.2.16:8300: connect: connection refused

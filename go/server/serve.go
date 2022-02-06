@@ -89,15 +89,6 @@ func (s *Server) Serve() {
 	path := fmt.Sprintf("%sexchange", prefix)
 	r.Handle(path, h)
 
-	// Point the ForwardAuth at this endpoint to dump the resulting forwarded request
-	// !!! This logs the bearer token value ...
-	r.HandleFunc(fmt.Sprintf("%sdump-headers", prefix), func(rw http.ResponseWriter, rq *http.Request) {
-		log.Println("dump-headers", "-----")
-		for k, v := range rq.Header {
-			log.Println(k, v)
-		}
-	})
-
 	logged := handlers.LoggingHandler(os.Stdout, r)
 
 	srv := &http.Server{

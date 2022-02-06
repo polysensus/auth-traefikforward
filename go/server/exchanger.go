@@ -21,7 +21,6 @@ const (
 	exchangeMaxConnsPerHost     = 100
 	exchangeMaxIdleConnsPerHost = 100
 	exchangeTimeout             = 10 * time.Second
-	jsonRPCMethodField          = "method"
 	contentTypeH                = "Content-Type"
 	contentLengthH              = "Content-Length"
 	contentTypeJSON             = "application/json"
@@ -65,11 +64,19 @@ func (x *Exchanger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	x.log.Printf(string(payload))
 
-	token, err := x.exchangeForQuorum(r)
+	resp, err := x.audienceFromResourceName(r)
 	if err != nil {
 		http.Error(
 			w, fmt.Sprintf(
-				"failed exchanging token for quorum: %v", err), http.StatusBadRequest)
+				"failed exchanging token: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	token, err := accessTokenFromResponse(resp)
+	if err != nil {
+		http.Error(
+			w, fmt.Sprintf(
+				"failed decoding exchanged token response: %v", err), http.StatusBadGateway)
 		return
 	}
 	log.Println(token)
@@ -80,25 +87,12 @@ func (x *Exchanger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// exchangeForQuorum expects the request to be a json-rpc request to a go-quorum
-// instance. It attempts a token exchange for a new access token which has an
-// aud matching the implied node identity and scopes which include at least the
-// json-rpc method being invoked.
-func (x *Exchanger) exchangeForQuorum(r *http.Request) (string, error) {
-
-	if r.Header.Get("content-type") != contentTypeJSON {
-		return "", errors.New(
-			"this endpoint will only exchange tokens for json-rpc requests")
-	}
+// audienceFromResourceName uses the last uri path segment is the audience for the new token.
+func (x *Exchanger) audienceFromResourceName(r *http.Request) (*http.Response, error) {
 
 	if r.URL.Fragment != "" {
-		return "", errors.New("fragments in the url are not allowed")
+		return nil, errors.New("fragments in the url are not allowed")
 	}
-
-	// method, err := jsonRPCMethodFromRequest(r)
-	// if err != nil {
-	// 	return "", err
-	// }
 
 	// Infer the desired audience from the original path if the header is present
 	path := r.Header.Get(xForwardedUri)
@@ -108,7 +102,7 @@ func (x *Exchanger) exchangeForQuorum(r *http.Request) (string, error) {
 
 	parts := strings.Split(path, "/")
 	if len(parts) == 0 {
-		return "", errors.New(
+		return nil, errors.New(
 			"at least one url path segment is required to identify the node audience (--identity)",
 		)
 	}
@@ -116,69 +110,34 @@ func (x *Exchanger) exchangeForQuorum(r *http.Request) (string, error) {
 
 	subjectToken, err := getBearerToken(r)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-
-	// take the aud from the tail of the uri, the json api security implemented
-	// by quorum demands that the aud in the token matches the identity of the
-	// node. The node identity is set via the --identity geth option.
-
-	// Efficiency demands that we either require the token exchange to cache the
-	// methods requested for an id and then return the accumulated scopes in one
-	// token OR we do that here at some point. Doing it here is likely the best
-	// choice as it is also where sessions for the authentication code flow
-	// would naturaly reside. For now, no caching, and we get a new token for
-	// every request. Note that if we cache, we must also verify the token here
-	// instead of leaving it to the exchange.
 
 	data := url.Values{}
 	data.Set("client_id", x.cfg.ClientID)
 	data.Set("client_secret", x.cfg.ClientSecret)
 	data.Set("grant_type", grantTypeTokenExchange)
-	data.Set("audience", audience)
-	// data.Set("scope", method)
-	data.Set("resource", r.URL.String()) // fragment present in url causes error above
 	data.Set("subject_token", subjectToken)
 	data.Set("subject_token_type", idTokenType)
+
+	data.Set("audience", audience)
+	// data.Set("scope", xxx) leave the scopes to the client configuration in the token exchange
+	resourceURL := url.URL{Scheme: r.URL.Scheme, Host: r.URL.Host, Path: path}
+	data.Set("resource", resourceURL.String()) // fragment present in url causes error above
 
 	encoded := data.Encode()
 
 	xr, err := http.NewRequest("POST", x.cfg.ExchangeURL, strings.NewReader(encoded))
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	xr.Header.Add(contentTypeH, contentTypeURLEncoded)
 	xr.Header.Add(contentLengthH, strconv.Itoa(len(encoded)))
 	resp, err := x.c.Do(xr)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-
-	return accessTokenFromResponse(resp)
-}
-
-// jsonRPCMethodFromRequest expects a json-rpc method payload in the body and returns
-// the name of the method being invoked
-func jsonRPCMethodFromRequest(r *http.Request) (string, error) {
-
-	dec := json.NewDecoder(r.Body) // Use GetBody if there is need to read more than once
-	for {
-		var v map[string]interface{}
-		if err := dec.Decode(&v); err != nil {
-			return "", err
-		}
-		for k := range v {
-			if k != "method" {
-				continue
-			}
-			method, ok := v[k].(string)
-			if !ok {
-				return "", fmt.Errorf("method name '%v' is not a string", v[k])
-			}
-			return method, nil
-		}
-	}
-	// return "", errors.New("'method' not found in data. Was it a json-rpc payload ?")
+	return resp, nil
 }
 
 // accessTokenFromResponse expects the response body to be a json document
