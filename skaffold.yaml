@@ -4,7 +4,14 @@ apiVersion: skaffold/v2beta26
 kind: Config
 build:
   tagPolicy:
-    sha256: {}
+    gitCommit:
+      variant: AbbrevCommitSha
+
+  local:
+    push: true
+    concurrency: 8
+    useBuildkit: true
+
   artifacts:
     - context: .
       image: authex
@@ -12,18 +19,11 @@ build:
 deploy:
   kustomize:
     paths:
-      - k8s/iona-debug
+      - k8s/tmp/dev
+
 profiles:
-  - name: cloudbuild
-    build:
-      googleCloudBuild: {}
-
-  - name: push
-    build:
-      local:
-        push: true
-
-  - name: local
+  - name: build
+    # just build the images, don't push (not compatible with deploy)
     build:
       local:
         push: false

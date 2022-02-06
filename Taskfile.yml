@@ -1,44 +1,148 @@
 ---
 version: '3'
 silent: true
+
 env:
-  CONTEXT: iona-1
-  CLUSTER: gke_iona-1_europe-west2-a_kluster
-  KUBECTL: kubectl --context {{.CONTEXT}} --cluster {{.CLUSTER}}
-  KUSTOMIZE: kustomize
-  CLUSTER_NAMESPACE: iona
-  NAMESPACE: '{{.NAMESPACE| default .CLUSTER_NAMESPACE}}'
+  ENV: .local/dev
+  PROFILE: '{{.PROFILE | default ""}}'
+  # This override is provided so that the generate task can be used to
+  # quick start consumers of this repository with useful defaults.
+  K8S_GENERATE_DIR: '{{.K8S_GENERATE_DIR | default "k8s/tmp"}}'
 
-  APPNAME: '{{.APPNAME | default "authex"}}'
+vars:
+  BUILD_ARTIFACTS: k8s/tmp/skaffold/build-artifacts.json
 
-  SKAFFOLD_DEFAULT_REPO: '{{.SKAFFOLD_DEFAULT_REPO | default "eu.gcr.io/iona-1"}}'
-  PROFILE: '{{.PROFILE | default "local"}}'
-  TAG: '{{.TAG | default "iona-latest"}}'
-  PORT: '{{.PORT | default "8401"}}'
-  TOKEN: '{{.TOKEN | default "xxxinvalidxxx"}}'
-  HOST: '{{.HOST | default "http://127.0.0.1:8401"}}'
-
-dotenv: [".env", "../.env", '{{.ENV}}/.env', '{{.HOME}}/.env']
+dotenv: [".env", '{{.ENV}}/.env', '{{.HOME}}/.env']
 
 tasks:
-  build:
-    desc: "build the images"
-    cmds:
-      - |
-        skaffold build ${PROFILE:+-p $PROFILE} ${TAG:+-t $TAG}
 
-  apply:
+  bootstrap:
     desc: |
-      apply kustomized k8s manifests (use if *not* using vscode cloud debug)
+      creates the {{.ENV}}/.env file and installs tooling. assumes a debain
+      like system (but uses python or brew where possible). for other platforms
+      run `task bootstrap --sumarize` and use the results to find the right
+      bits.  Note that .env (in the directory containing this Taskfile) is
+      never created or touched in anyway and has the highest precedence
+
+      NOTICE: to re-create {{.ENV}}/.env you MUST delete it first (else it will
+      be re-created with the same values
+
     cmds:
       - |
-        {{.KUSTOMIZE}} build k8s/iona-apply | {{.KUBECTL}} apply -f -
+        mkdir -p {{.ENV}}
+
+        CONTEXT=${CONTEXT:-$(kubectl config current-context)}
+        CLUSTER=$(kubectl config get-contexts ${CONTEXT} --no-headers=true | tr -s ' ' | cut -d ' ' -f3)
+        SKAFFOLD_DEFAULT_REPO=${SKAFFOLD_DEFAULT_REPO:-eu.gcr.io/${CONTEXT}}
+        CONTEXT_NAMESPACE=${CONTEXT_NAMESPACE:-$(echo ${CONTEXT} | cut -d '-' -f1)}
+        NAMESPACE=${NAMESPACE:-${CONTEXT_NAMESPACE}-${APPNAME}}
+        DOMAIN=${DOMAIN:-localhost}
+
+        cat <<EOF > {{.ENV}}/.env
+        CONTEXT=${CONTEXT}
+        CLUSTER=${CLUSTER}
+        SKAFFOLD_DEFAULT_REPO=${SKAFFOLD_DEFAULT_REPO}
+        CONTEXT_NAMESPACE=${CONTEXT_NAMESPACE}
+        NAMESPACE=${NAMESPACE}
+        APPNAME=${APPNAME}
+        PYENV=${PYENV}
+        PORT=${PORT}
+        HOST=${HOST}
+        TOKEN=${TOKEN}
+        DOMAIN=${DOMAIN}
+        EOF
+
+    env:
+      CONTEXT: "{{.CONTEXT}}"
+      CONTEXT_NAMESPACE: "{{.CONTEXT_NAMESPACE}}"
+      NAMESPACE: "{{.NAMESPACE}}"
+      TAG: "{{.TAG}}"
+      SKAFFOLD_DEFAULT_REPO: "{{.SKAFFOLD_DEFAULT_REPO}}"
+      APPNAME: '{{.APPNAME | default "authex"}}'
+      PYENV: '{{.PYENV | default "env"}}'
+      PROFILE: '{{.PROFILE | default "local"}}'
+      PORT: '{{.PORT | default "8401"}}'
+      HOST: '{{.HOST | default "http://127.0.0.1:8401"}}'
+      TOKEN: '{{.TOKEN | default "xxxinvalidxxx"}}'
+      DOMAIN: '{{.DOMAIN | default "localhost"}}'
+
+  generate:
+    desc: 'generate context dependent manifests and secrets and so on'
+    cmds:
+      - |
+        mkdir -p {{.K8S_GENERATE_DIR}}/dev
+        mkdir -p $(dirname {{.BUILD_ARTIFACTS}})
+
+        [ -f "${CLIENTID_SECRET_FILE}" ] && source ${CLIENTID_SECRET_FILE}
+
+        [ -z "${CLIENT_ID}" ] && echo "CLIENT_ID must be set (or present in CLIENTID_SECRET_FILE)" && exit 1
+        [ -z "${CLIENT_SECRET}" ] && echo "CLIENT_SECRET must be set (or present in CLIENTID_SECRET_FILE)" && exit 1
+
+        echo "CLIENT_ID: $CLIENT_ID"
+        echo "CLIENT_SECRET: $CLIENT_SECRET"
+
+        cat <<EOF > {{.K8S_GENERATE_DIR}}/dev/clientidsecret.env
+        CLIENT_ID=${CLIENT_ID}
+        CLIENT_SECRET=${CLIENT_SECRET}
+        EOF
+
+        cat <<EOF > {{.K8S_GENERATE_DIR}}/dev/namespace.yaml
+        kind: Namespace
+        apiVersion: v1
+        metadata:
+          name: ${NAMESPACE}
+        EOF
+        cat <<EOF > {{.K8S_GENERATE_DIR}}/dev/kustomization.yaml
+        namespace: ${NAMESPACE}
+        resources:
+          - ./namespace.yaml
+          - ./../../authex
+        secretGenerator:
+          - name: authex-tokenendpoint-clientid-secret
+            envs:
+              - clientidsecret.env
+        EOF
+
+    env:
+      CLIENT_ID: "{{.CLIENT_ID}}"
+      CLIENT_SECRET: "{{.CLIENT_SECRET}}"
+      # Note: this default means that after overriding CLIENTID_SECRET_FILE
+      # once, it is not necessary to do so again unless you want to update the
+      # secret
+      CLIENTID_SECRET_FILE: '{{.CLIENTID_SECRET_FILE | default "k8s/tmp/dev/clientidsecret.env"}}'
+
+    generates:
+      - "{{.K8S_GENERATE_DIR}}/dev/kustomization.yaml"
+      - "{{.K8S_GENERATE_DIR}}/dev/namespace.yaml"
+
+  build:
+    desc: 'build the images'
+    cmds:
+      - |
+        skaffold build \
+          ${PROFILE:+-p $PROFILE} \
+          ${TAG:+-t $TAG} \
+          --file-output {{.BUILD_ARTIFACTS}}
+
+  deploy:
+    desc: 'deploy the app using skaffold'
+    precondition:
+      - test: -f {{.BUILD_ARTIFACTS}}
+        msg: "{{.BUILD_ARTIFACTS}} is missing, run `task build` first"
+    cmds:
+      - |
+        skaffold deploy \
+            ${CONTEXT:+--kube-context ${CONTEXT}} \
+            ${NAMESPACE:+-n $NAMESPACE} \
+            --build-artifacts {{.BUILD_ARTIFACTS}}
 
   down:
-    desc: un-apply kustomized k8s manifests
+    desc: 'take the app down and clean up the k8s resources'
     cmds:
       - |
-        {{.KUSTOMIZE}} build k8s/iona-apply | {{.KUBECTL}} delete -f -
+        skaffold delete \
+            ${CONTEXT:+--kube-context ${CONTEXT}} \
+            ${NAMESPACE:+-n $NAMESPACE}
 
   pf:
     desc: 'port forward to $APPNAME'
@@ -50,6 +154,7 @@ tasks:
         echo $POD
         # {{.KUBECTL}} -n {{.N}} port-forward --address localhost pod/$POD 8080
         $KUBECTL -n $NAMESPACE port-forward pod/$POD $PORT
+
   logs:
     desc: 'port forward to $APPNAME'
     cmds:
@@ -60,16 +165,3 @@ tasks:
         echo $POD
         # {{.KUBECTL}} -n {{.N}} port-forward --address localhost pod/$POD 8080
         $KUBECTL -n $NAMESPACE logs $POD {{.CLI_ARGS}}
-
-  exchange:
-    desc: 'do the exchange'
-    cmds:
-      - |
-        echo $TOKEN
-        # curl -k -v \
-        #   -H "Authorization: Bearer $TOKEN" \
-        #   $HOST/dump-headers?scope=eth_sendRawTransaction
-        curl -v -k $HOST \
-          -H "Authorization: Bearer $TOKEN" \
-          -H "Content-Type: application/json" \
-          --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":83}'

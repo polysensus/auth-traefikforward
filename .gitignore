@@ -1,3 +1,6 @@
+.local
+env
+k8s/tmp
 # Binaries for programs and plugins
 *.exe
 *.exe~

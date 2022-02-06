@@ -1,8 +1,0 @@
-namespace: rrr9
-resources:
-  - ./../base
-configMapGenerator:
-  - name: authex
-    behavior: merge
-    envs:
-      - ./clientid-secret.env

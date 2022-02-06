@@ -1,0 +1,64 @@
+# This Deployment manifest defines:
+# - single-replica deployment of the container image, with label "app: go-hello-world"
+# - Pod exposes port 8080
+# - specify PORT environment variable to the container process
+# Syntax reference https://kubernetes.io/docs/concepts/configuration/overview/
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authex
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: authex
+  template:
+    metadata:
+      labels:
+        app: authex
+    spec:
+
+      containers:
+        - name: service
+          image: authex
+          ports:
+            - containerPort: 8401
+
+          env:
+            - name: AUTHEX_ADDRESS
+              valueFrom:
+                configMapKeyRef:
+                  name: authex
+                  key: AUTHEX_ADDRESS
+
+            - name: AUTHEX_PREFIX
+              valueFrom:
+                configMapKeyRef:
+                  name: authex
+                  key: AUTHEX_PREFIX
+            - name: AUTHEX_EXCHANGEURL
+              valueFrom:
+                configMapKeyRef:
+                  name: authex
+                  key: AUTHEX_EXCHANGEURL
+
+            # current approach is to deploy a single tokenendpoint and authex
+            # in one namespace and have them share the clientid/secret k8s
+            # secret. the clients.json for tokenendpoint has one entry with the
+            # corresponding id/secret in it.
+            - name: AUTHEX_CLIENTID
+              valueFrom:
+                secretKeyRef:
+                  name: authex-tokenendpoint-clientid-secret
+                  key: CLIENT_ID
+
+            - name: AUTHEX_CLIENTSECRET
+              valueFrom:
+                secretKeyRef:
+                  name: authex-tokenendpoint-clientid-secret
+                  key: CLIENT_SECRET
+
+          readinessProbe:
+            tcpSocket:
+              port: 8401
+            initialDelaySeconds: 5
