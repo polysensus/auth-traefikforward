@@ -1,3 +1,4 @@
+go/authex
 .local
 env
 k8s/tmp

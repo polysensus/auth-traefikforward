@@ -36,6 +36,12 @@ spec:
                 configMapKeyRef:
                   name: authex
                   key: AUTHEX_PREFIX
+            - name: AUTHEX_PROXY_PREFIX
+              valueFrom:
+                configMapKeyRef:
+                  name: authex
+                  key: AUTHEX_PROXY_PREFIX
+
             - name: AUTHEX_EXCHANGEURL
               valueFrom:
                 configMapKeyRef:

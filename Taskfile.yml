@@ -151,8 +151,6 @@ tasks:
         POD=$($KUBECTL -n $NAMESPACE get pod \
            --selector=app=$APPNAME \
            --no-headers -o custom-columns=":metadata.name")
-        echo $POD
-        # {{.KUBECTL}} -n {{.N}} port-forward --address localhost pod/$POD 8080
         $KUBECTL -n $NAMESPACE port-forward pod/$POD $PORT
 
   logs:

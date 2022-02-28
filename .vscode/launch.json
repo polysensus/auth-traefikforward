@@ -1,7 +1,6 @@
 {
   "version": "0.2.0",
   "configurations": [
-  
     {
       "name": "Run on Kubernetes",
       "type": "cloudcode.kubernetes",
@@ -16,6 +15,13 @@
           "containerName": "server",
           "sourceFileMap": {
             "${workspaceFolder}/go": "/authex"
+          }
+        },
+        {
+          "image": "authex",
+          "containerName": "service",
+          "sourceFileMap": {
+            "${workspaceFolder}": "/authex"
           }
         }
       ],

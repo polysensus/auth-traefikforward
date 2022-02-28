@@ -23,6 +23,7 @@ const (
 type Config struct {
 	Address       string
 	Prefix        string
+	ProxyPrefix   string
 	ExchangeURL   string
 	ClientID      string
 	ClientSecret  string
@@ -36,6 +37,7 @@ func NewConfig() Config {
 	cfg := Config{
 		Address:       fmt.Sprintf("0.0.0.0:%d", DefaultPort),
 		Prefix:        "",
+		ProxyPrefix:   "",
 		ExchangeURL:   "",
 		ClientID:      "",
 		ClientSecret:  "",
@@ -68,26 +70,38 @@ func NewServer(
 	return s, nil
 }
 
+func normalisePrefixPath(prefix string) (string, error) {
+	if prefix == "" {
+		return "/", nil
+	}
+
+	// Normalise to exactly one leading '/'
+	prefix = "/" + strings.TrimLeft(prefix, "/")
+
+	u, err := url.ParseRequestURI(prefix)
+	if err != nil {
+		return "", err
+	}
+	return u.Path, nil
+}
+
 func (s *Server) Serve() {
 
 	// Add your routes as needed
 	r := mux.NewRouter()
-	h := NewExchanger(s.cfg)
 
-	prefix := "/"
-	if s.cfg.Prefix != "" {
-
-		// Normalise to exactly one leading '/'
-		prefix = "/" + strings.TrimLeft(s.cfg.Prefix, "/")
-
-		u, err := url.ParseRequestURI(prefix)
-		if err != nil {
-			log.Fatalf("bad route prefix: %v", err)
-		}
-		prefix = u.Path
+	path, err := normalisePrefixPath(s.cfg.Prefix)
+	if err != nil {
+		log.Fatalf("bad route prefix: %v", err)
 	}
-	path := fmt.Sprintf("%sexchange", prefix)
-	r.Handle(path, h)
+	path = fmt.Sprintf("%sexchange", path)
+	r.Handle(path, NewExchanger(s.cfg))
+
+	proxyPath, err := normalisePrefixPath(s.cfg.ProxyPrefix)
+	if err != nil {
+		log.Fatalf("bad route prefix: %v", err)
+	}
+	r.PathPrefix(proxyPath).Handler(NewGethProxy(s.cfg))
 
 	logged := handlers.LoggingHandler(os.Stdout, r)
 
@@ -101,7 +115,7 @@ func (s *Server) Serve() {
 		// Handler: r, // Pass our instance of gorilla/mux in.
 	}
 
-	log.Println("serving:", srv.Addr, "path:", path)
+	log.Println("serving:", srv.Addr, "path:", path, "proxyPath:", proxyPath)
 
 	// Run our server in a goroutine so that it doesn't block.
 	go func() {
