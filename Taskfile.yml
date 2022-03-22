@@ -134,15 +134,25 @@ tasks:
         skaffold deploy \
             ${CONTEXT:+--kube-context ${CONTEXT}} \
             ${NAMESPACE:+-n $NAMESPACE} \
+            --label=user-deploy=$USER-authex \
             --build-artifacts {{.BUILD_ARTIFACTS}}
 
   down:
     desc: 'take the app down and clean up the k8s resources'
     cmds:
       - |
-        skaffold delete \
-            ${CONTEXT:+--kube-context ${CONTEXT}} \
-            ${NAMESPACE:+-n $NAMESPACE}
+        # -l skaffold.dev/run-id=1ea50cc3-294e-499b-ad59-876378d59ee7
+        for resource in $(kubectl api-resources --verbs=list --namespaced -o name); do
+          for target in $(kubectl get \
+            --show-kind \
+            -l user-deploy=$USER-authex \
+            --ignore-not-found \
+            -n $NAMESPACE \
+            -o name ${resource} 2> /dev/null); do
+            echo $target
+            kubectl delete $target -n $NAMESPACE
+          done
+        done
 
   pf:
     desc: 'port forward to $APPNAME'

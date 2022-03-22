@@ -8,7 +8,8 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"strings"
+
+	"github.com/robinbryce/authex/reqtoken"
 )
 
 type GethProxy struct {
@@ -31,48 +32,33 @@ func (p *GethProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	log.Println("request url:", r.URL.String())
 
 	// Basic validity checking but NOT VERIFICATION (leave that to the token exchange)
-	token, source, err := p.getRequestToken(r)
-	if source == NoToken {
-		if err == nil {
-			err = errors.New("an exchangable token was not found in the request")
-		}
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	if r.URL.Fragment != "" {
-		http.Error(w, "fragments in the url are not allowed", http.StatusBadRequest)
-		return
-	}
-
-	path := r.Header.Get(xForwardedUri)
-	if path == "" {
-		path = r.URL.Path
-	}
-
-	parts := strings.Split(path, "/")
-	if source == LastPathSegment {
-		parts = parts[:len(parts)-1]
-	}
+	c, err := reqtoken.FromRequest(r)
 
 	// TODO: audience will come from the api key if it is specified there
 	// otherwise it will be picked. Essentially this will need to grow into a
 	// mini loadbalancer specialised for ethereum rpc's
 	audience := "ethnode1"
-	parts = append(parts, audience)
+	var resp *http.Response
+	switch {
+	// case c.Format == reqtoken.FormatNotSupported:
+	default:
+		if err == nil {
+			err = errors.New("an exchangable token was not found in the request")
+		}
 
-	u := url.URL{Scheme: r.URL.Scheme, Host: r.URL.Host, Path: strings.Join(parts, "/")}
-	resource := u.String()
-
-	resp, err := p.exchangeToken(r, token, resource, audience)
+	case c.Format == reqtoken.FormatAPIKey:
+		resp, err = p.exchangeAPIKey(r, &c)
+	case c.Format == reqtoken.FormatJWT:
+		resp, err = p.exchangeIDToken(r, &c, audience)
+	}
 	if err != nil {
 		http.Error(
 			w, fmt.Sprintf(
-				"failed exchanging token: %v", err), http.StatusBadRequest)
+				"failed exchanging token: %v", err), http.StatusForbidden)
 		return
 	}
 
-	token, err = accessTokenFromResponse(resp)
+	accessToken, err := accessTokenFromResponse(resp)
 	if err != nil {
 		http.Error(
 			w, fmt.Sprintf(
@@ -94,7 +80,7 @@ func (p *GethProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.Header.Set("X-Forwarded-Host", hostHeader)
 	}
 	r.Host = r.URL.Host
-	r.Header.Set(AuthorizationH, fmt.Sprintf("Bearer %s", token))
+	r.Header.Set(reqtoken.AuthorizationH, fmt.Sprintf("Bearer %s", accessToken))
 	proxy := httputil.NewSingleHostReverseProxy(url)
 	proxy.Transport = p.c.Transport
 

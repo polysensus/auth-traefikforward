@@ -33,11 +33,6 @@ func main() {
 	`)
 
 	f.StringVar(
-		&cfg.ProjectID, "projectid", cfg.ProjectID, `
-	Firebase project id.
-	`)
-
-	f.StringVar(
 		&cfg.Prefix, "prefix", cfg.Prefix, `
 	Prefix all served routes with this value. A leading '/' is added to the path
 	if absent. You must include trailing '/' if a full segment is intended

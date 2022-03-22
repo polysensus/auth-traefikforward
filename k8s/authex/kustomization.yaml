@@ -1,12 +1,14 @@
+commonLabels:
+  repository: github.com-robinbryce-authex
 resources:
   - deployment.yaml
   - service.yaml
   # - middleware-forwardauth.yaml
   # - middleware-removepath.yaml
-configMapGenerator:
-  - name: authex
-    literals:
-      - AUTHEX_ADDRESS=0.0.0.0:8401
-      - AUTHEX_PREFIX=node/
-      - AUTHEX_PROXY_PREFIX=chain/
-      - AUTHEX_EXCHANGEURL=http://tokenendpoint:3000/token
+#configMapGenerator:
+#  - name: authex
+#    literals:
+#      - AUTHEX_ADDRESS=0.0.0.0:8401
+#      - AUTHEX_PREFIX=node/
+#      - AUTHEX_PROXY_PREFIX=chain/
+#      - AUTHEX_EXCHANGEURL=http://tokenendpoint:3000/token

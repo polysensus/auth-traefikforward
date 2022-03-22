@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/robinbryce/authex/reqtoken"
 )
 
 const (
@@ -26,26 +27,8 @@ const (
 	contentTypeJSON             = "application/json"
 	contentTypeURLEncoded       = "application/x-www-form-urlencoded"
 	grantTypeTokenExchange      = "urn:ietf:params:oauth:grant-type:token-exchange"
+	grantTypeClientCredentials  = "client_credentials"
 	idTokenType                 = "urn:ietf:params:oauth:token-type:id_token"
-	xForwardedUri               = "X-Forwarded-Uri"
-	apiKeyParam                 = "api_key"
-	apiKeyHeader                = "x-api-key"
-	AuthorizationH              = "Authorization"
-	BearerScheme                = "Bearer"
-	JOSETypeKey                 = "typ"
-	JOSEAlgKey                  = "alg"
-	JOSEAlgNone                 = "none"
-	JOSETypeJWT                 = "JWT"
-)
-
-type TokenSource int
-
-const (
-	NoToken TokenSource = iota
-	AuthorizationHeader
-	APIKeyParameter
-	APIKeyHeader
-	LastPathSegment
 )
 
 type logger interface {
@@ -79,79 +62,155 @@ func (x *Exchanger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	for k, v := range r.Header {
 		log.Println(k, v)
 	}
-
-	// Basic validity checking but NOT VERIFICATION (leave that to the token exchange)
-	token, source, err := x.getRequestToken(r)
-	if source == NoToken {
-		if err == nil {
-			err = errors.New("an exchangable token was not found in the request")
-		}
-		http.Error(w, err.Error(), http.StatusForbidden)
-		return
-	}
-
 	if r.URL.Fragment != "" {
 		http.Error(w, "fragments in the url are not allowed", http.StatusBadRequest)
 		return
 	}
 
-	// Infer the desired audience from the original path if the header is present
-	path := r.Header.Get(xForwardedUri)
-	if path == "" {
-		path = r.URL.Path
-	}
-
-	parts := strings.Split(path, "/")
-	if len(parts) == 0 {
-		http.Error(w, "at least one path segment is requred to indicate the audience", http.StatusBadRequest)
+	// Basic validity checking but NOT VERIFICATION (leave that to the token exchange)
+	c, err := reqtoken.FromRequest(r)
+	if err != nil || c.Format == reqtoken.FormatNotSupported {
+		http.Error(
+			w, fmt.Sprintf(
+				"failed decoding request token: %v", err), http.StatusBadRequest)
 		return
 	}
 
-	var audience string
-	if source == LastPathSegment {
-		if len(parts) < 2 {
-			http.Error(w, "at least two path segments are require when the token is passed in the url", http.StatusBadRequest)
-			return
-		}
-		audience = parts[len(parts)-2]
-	} else {
-		audience = parts[len(parts)-1]
+	var resp *http.Response
+	switch {
+	// case c.Format == reqtoken.FormatNotSupported:
+	default:
+		err = errors.New("an exchangable token was not found in the request")
+	case c.Format == reqtoken.FormatAPIKey:
+		x.log.Printf("exchanging apikey")
+		resp, err = x.exchangeAPIKey(r, &c)
+	case c.Format == reqtoken.FormatJWT:
+		x.log.Printf("exchanging idtoken")
+		resp, err = x.exchangeIDToken(r, &c, "")
 	}
-
-	u := url.URL{Scheme: r.URL.Scheme, Host: r.URL.Host, Path: path}
-	resource := u.String()
-
-	resp, err := x.exchangeToken(r, token, resource, audience)
 	if err != nil {
 		http.Error(
 			w, fmt.Sprintf(
-				"failed exchanging token: %v", err), http.StatusBadRequest)
+				"failed exchanging token: %v", err), http.StatusForbidden)
 		return
 	}
 
-	token, err = accessTokenFromResponse(resp)
+	accessToken, err := accessTokenFromResponse(resp)
 	if err != nil {
 		http.Error(
 			w, fmt.Sprintf(
 				"failed decoding exchanged token response: %v", err), http.StatusBadGateway)
 		return
 	}
-	// x.log.Println(token)
 
-	w.Header().Set("Authorization", fmt.Sprintf("Bearer %s", token))
+	w.Header().Set("Authorization", fmt.Sprintf("Bearer %s", accessToken))
 
 	// Explicit OK, we have no response data
 	w.WriteHeader(http.StatusOK)
 }
 
-// exchangeToken uses the last uri path segment is the audience for the new token.
-func (x *Exchanger) exchangeToken(r *http.Request, subjectToken, resource, audience string) (*http.Response, error) {
+func (x *Exchanger) exchangeAPIKey(r *http.Request, c *reqtoken.Components) (*http.Response, error) {
+
+	if c.Format != reqtoken.FormatAPIKey {
+		return nil, fmt.Errorf("apikey to exchange must be robinbryce/apikey format")
+	}
+
+	// Derive the resource from the original request uri
+	path := r.Header.Get(reqtoken.XForwardedUri)
+	if path == "" {
+		path = r.URL.Path
+	}
+
+	u := url.URL{Scheme: r.URL.Scheme, Host: r.URL.Host, Path: path}
+
+	if host := r.Header.Get(reqtoken.XForwardedHost); host != "" {
+		u.Host = host
+	}
+	if scheme := r.Header.Get(reqtoken.XForwardedProto); scheme != "" {
+		u.Scheme = scheme
+	}
+	if port := r.Header.Get(reqtoken.XForwardedPort); port != "" {
+		// Force on the port if its not standard for the scheme
+		if (u.Scheme == "https" && port != "443") || (u.Scheme == "http" && port != "80") {
+			u.Host = u.Host + ":" + port
+		}
+	}
+
+	resource := u.String()
+
+	data := url.Values{}
+
+	// Sending the whole apikey as both secret and id works around an
+	// awkwardness in oidc-provider
+	// data.Set("client_id", c.Data)
+	// data.Set("client_secret", c.Data)
+	data.Set("grant_type", grantTypeClientCredentials)
+	data.Set("resource", resource)
+
+	encoded := data.Encode()
+
+	xr, err := http.NewRequest("POST", x.cfg.ExchangeURL, strings.NewReader(encoded))
+	if err != nil {
+		return nil, err
+	}
+
+	// This is how we should do it
+	// Supply the clientid:secret in the Authorization: Basic <> header
+	xr.Header.Add(reqtoken.AuthorizationH, fmt.Sprintf("Basic %s", c.Data))
+
+	xr.Header.Add(contentTypeH, contentTypeURLEncoded)
+	xr.Header.Add(contentLengthH, strconv.Itoa(len(encoded)))
+	resp, err := x.c.Do(xr)
+	if err != nil {
+		return nil, err
+	}
+	// dump, err := httputil.DumpRequest(xr, true)
+	// if err != nil {
+	// 	x.log.Printf("failed to dump request: %v", err)
+	// } else {
+	// 	x.log.Printf(string(dump))
+	// }
+	return resp, nil
+
+}
+
+// exchangeIDToken uses the last uri path segment is the audience for the new token.
+func (x *Exchanger) exchangeIDToken(r *http.Request, c *reqtoken.Components, audience string) (*http.Response, error) {
+
+	if c.Format != reqtoken.FormatJWT {
+		return nil, fmt.Errorf("id token to exchange must be jwt format")
+	}
+
+	// Infer the desired audience from the original path if the header is present
+	path := r.Header.Get(reqtoken.XForwardedUri)
+	if path == "" {
+		path = r.URL.Path
+	}
+
+	parts := strings.Split(path, "/")
+	if len(parts) == 0 {
+		return nil, fmt.Errorf("at least one path segment is requred to indicate the audience")
+	}
+
+	if audience == "" {
+		if c.Source == reqtoken.LastPathSegment {
+			if len(parts) < 2 {
+				return nil, fmt.Errorf("at least two path segments are require when the token is passed in the url")
+			}
+			audience = parts[len(parts)-2]
+		} else {
+			audience = parts[len(parts)-1]
+		}
+	}
+
+	u := url.URL{Scheme: r.URL.Scheme, Host: r.URL.Host, Path: path}
+	resource := u.String()
 
 	data := url.Values{}
 	data.Set("client_id", x.cfg.ClientID)
 	data.Set("client_secret", x.cfg.ClientSecret)
 	data.Set("grant_type", grantTypeTokenExchange)
-	data.Set("subject_token", subjectToken)
+	data.Set("subject_token", c.Data)
 	data.Set("subject_token_type", idTokenType)
 
 	data.Set("audience", audience)
@@ -198,171 +257,4 @@ func accessTokenFromResponse(r *http.Response) (string, error) {
 		}
 	}
 	// return "", errors.New("'method' not found in data. Was it a json-rpc payload ?")
-}
-
-func parseAPIKeyParameter(r *http.Request) (string, bool, error) {
-
-	var err error
-	var u *url.URL
-
-	uri := r.Header.Get(xForwardedUri)
-	if uri == "" {
-		u = r.URL
-	} else {
-		u, err = url.Parse(uri)
-		if err != nil {
-			return "", false, fmt.Errorf("failed parsing forwarded header '%s'", uri)
-		}
-	}
-
-	q, _ := url.ParseQuery(u.RawQuery)
-	apiKey, ok := q[apiKeyParam]
-	if !ok {
-		return "", false, nil
-	}
-
-	if len(apiKey) > 1 {
-		return "", false, fmt.Errorf("multiple values for param '%s'", apiKeyParam)
-	}
-	if apiKey[0] == "" {
-		return "", false, fmt.Errorf("empty api key provided for param '%s'", apiKeyParam)
-	}
-
-	return apiKey[0], true, nil
-}
-
-func lastPathSegment(r *http.Request) (string, bool, error) {
-
-	var err error
-	var u *url.URL
-
-	uri := r.Header.Get(xForwardedUri)
-	if uri == "" {
-		u = r.URL
-	} else {
-		u, err = url.Parse(uri)
-		if err != nil {
-			return "", false, fmt.Errorf("failed parsing forwarded header '%s'", uri)
-		}
-	}
-
-	parts := strings.Split(u.Path, "/")
-	if len(parts) < 1 {
-		return "", false, nil
-	}
-	return parts[len(parts)-1], true, nil
-}
-
-// checkJOSEHeaderFormat returns true if the token string has a correctly formated jose header.
-// see - https://datatracker.ietf.org/doc/html/rfc7519#section-5
-// IT DOES NOT VERIFY THE TOKEN
-func checkJOSEHeaderFormat(token string) error {
-	parts := strings.Split(token, ".")
-	if len(parts) != 3 {
-		return fmt.Errorf("header payload and signature fields not found")
-	}
-
-	s, err := base64.RawURLEncoding.DecodeString(parts[0])
-	if err != nil {
-		return fmt.Errorf("failed to base64 decode token header: %v", err)
-	}
-	header := map[string]string{}
-	if err := json.Unmarshal(s, &header); err != nil {
-		return fmt.Errorf("failed to json parse token header: %v", err)
-	}
-
-	if v, ok := header[JOSETypeKey]; !ok || v != JOSETypeJWT {
-		return fmt.Errorf(
-			"missing or invalid %s JOSE header type. '%s' != '%s' field: %v", JOSETypeKey, v, JOSETypeJWT, err)
-	}
-
-	if v, ok := header[JOSEAlgKey]; ok && v == JOSEAlgNone {
-		return fmt.Errorf("unsecured jwt's are not supported")
-	}
-	return nil
-}
-
-// getRequestToken extracts an exchangable token from the request
-// It returns a constant indicating which part of the request the token was
-// taken from. The possible sources are (in precedence order):
-// 	Authorization: Bearer  	header
-//  APIKey header  			x-api-key
-//  APIKey uri parameter 	?api_key
-//  Last path segment of X-Forwarded-Uri
-//
-// THIS FUNCTION DOES NOT VERIFY THE TOKEN
-//
-// But it does ensure it has appropriate jose header per
-//  https://datatracker.ietf.org/doc/html/rfc7519#section-5
-func (x *Exchanger) getRequestToken(r *http.Request) (string, TokenSource, error) {
-
-	var ok bool
-	var err error
-	var token string
-
-	// Do we have an authorization header ?
-	values, ok := r.Header[AuthorizationH]
-	if ok {
-
-		// Yes, so reject the request if its not what we support
-		if len(values) != 1 || !strings.HasPrefix(values[0], BearerScheme) {
-			return "", NoToken, fmt.Errorf("unsupported authorization header format")
-		}
-
-		parts := strings.SplitN(values[0], " ", 2)
-		if len(parts) != 2 {
-			return "", NoToken, fmt.Errorf("unsupported authorization header format")
-		}
-
-		token := parts[1]
-		if err := checkJOSEHeaderFormat(token); err != nil {
-			return "", NoToken, err
-		}
-		return token, AuthorizationHeader, nil
-	}
-
-	// Do we have an api key presented as a header ?
-	values, ok = r.Header[http.CanonicalHeaderKey(apiKeyHeader)]
-	if ok {
-		if len(values) != 1 {
-			return "", NoToken, fmt.Errorf("unsupported '%s' header format", apiKeyHeader)
-		}
-
-		token := values[0]
-
-		if err := checkJOSEHeaderFormat(token); err != nil {
-			return "", NoToken, err
-		}
-
-		return token, APIKeyHeader, nil
-	}
-
-	// Do we have an api key presented as a url parameter ?
-	if token, ok, err = parseAPIKeyParameter(r); ok || err != nil {
-		if err != nil {
-			return "", NoToken, err
-		}
-		if err := checkJOSEHeaderFormat(token); err != nil {
-			return "", NoToken, err
-		}
-
-		return token, APIKeyHeader, nil
-	}
-
-	// Last chance saloon, attempt to interpret the last path segment as a token
-
-	if token, ok, err = lastPathSegment(r); ok || err != nil {
-		if err != nil {
-			return "", NoToken, err
-		}
-
-		if err := checkJOSEHeaderFormat(token); err != nil {
-			return "", NoToken, err
-		}
-
-		return token, LastPathSegment, nil
-	}
-
-	return "", NoToken, nil
-
 }

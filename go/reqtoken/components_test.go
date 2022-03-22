@@ -1,4 +1,4 @@
-package server
+package reqtoken
 
 import (
 	"fmt"
@@ -112,7 +112,8 @@ func Test_checkJOSEHeaderFormat(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := checkJOSEHeaderFormat(tt.args.token); (err != nil) != tt.wantErr {
+			m := JWTHeader{}
+			if err := DecodeJOSEHeader(&m, tt.args.token); (err != nil) != tt.wantErr {
 				t.Errorf("checkJOSEHeaderFormat() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
@@ -120,24 +121,18 @@ func Test_checkJOSEHeaderFormat(t *testing.T) {
 }
 
 func TestExchanger_getRequestToken(t *testing.T) {
-	type fields struct {
-		cfg *Config
-		log logger
-		c   *http.Client
-	}
 	type args struct {
 		r *http.Request
 	}
 	tests := []struct {
 		name    string
-		fields  fields
 		args    args
 		want    string
 		want1   TokenSource
 		wantErr bool
 	}{
 		// TODO: Add test cases.
-		{"token is bearer token", fields{cfg: nil, log: nil, c: nil}, args{
+		{"token is bearer token", args{
 			r: &http.Request{
 				Header: map[string][]string{
 					"Authorization": {fmt.Sprintf("Bearer %s", johnDoe)},
@@ -146,28 +141,23 @@ func TestExchanger_getRequestToken(t *testing.T) {
 				URL: &url.URL{Path: strings.Join([]string{"audience", johnDoe}, "/")},
 			}}, johnDoe, AuthorizationHeader, false},
 
-		{"token is second path element", fields{cfg: nil, log: nil, c: nil}, args{
+		{"token is second path element", args{
 			r: &http.Request{
 				URL: &url.URL{Path: strings.Join([]string{"audience", johnDoe}, "/")},
 			}}, johnDoe, LastPathSegment, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			x := &Exchanger{
-				cfg: tt.fields.cfg,
-				log: tt.fields.log,
-				c:   tt.fields.c,
-			}
-			got, got1, err := x.getRequestToken(tt.args.r)
+			got, err := FromRequest(tt.args.r)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Exchanger.getRequestToken() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if got != tt.want {
-				t.Errorf("Exchanger.getRequestToken() got = %v, want %v", got, tt.want)
+			if got.Data != tt.want {
+				t.Errorf("Exchanger.getRequestToken() got.Data = %v, want %v", got.Data, tt.want)
 			}
-			if got1 != tt.want1 {
-				t.Errorf("Exchanger.getRequestToken() got1 = %v, want %v", got1, tt.want1)
+			if got.Source != tt.want1 {
+				t.Errorf("Exchanger.getRequestToken() got.Source = %v, want %v", got.Source, tt.want1)
 			}
 		})
 	}
