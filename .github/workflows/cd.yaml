@@ -58,4 +58,4 @@ jobs:
         with:
           push: true
           context: .
-          tags: eu.gcr.io/iona-1/tokenendpoint:${{ steps.build_id.outputs.BUILD_ID }}
+          tags: eu.gcr.io/iona-1/authex:${{ steps.build_id.outputs.BUILD_ID }}
