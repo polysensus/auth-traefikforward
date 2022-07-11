@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	ttlcache "github.com/jellydator/ttlcache/v3"
+
 	"github.com/robinbryce/authex/reqtoken"
 )
 
@@ -22,6 +24,7 @@ const (
 	exchangeMaxConnsPerHost     = 100
 	exchangeMaxIdleConnsPerHost = 100
 	exchangeTimeout             = 10 * time.Second
+	cacheEntryTTL               = 5 * time.Minute // this can comfortably be 30 minutes or so
 	contentTypeH                = "Content-Type"
 	contentLengthH              = "Content-Length"
 	contentTypeJSON             = "application/json"
@@ -35,9 +38,10 @@ type logger interface {
 	Printf(format string, v ...interface{})
 }
 type Exchanger struct {
-	cfg *Config
-	log logger
-	c   *http.Client
+	cfg   *Config
+	log   logger
+	c     *http.Client
+	cache *ttlcache.Cache[string, string]
 }
 
 func NewExchanger(cfg *Config) *Exchanger {
@@ -52,7 +56,12 @@ func NewExchanger(cfg *Config) *Exchanger {
 			Timeout:   exchangeTimeout,
 			Transport: t,
 		},
+		cache: ttlcache.New(
+			ttlcache.WithTTL[string, string](cacheEntryTTL),
+		),
 	}
+	x.cache.Start()
+
 	return x
 }
 
@@ -76,17 +85,19 @@ func (x *Exchanger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var resp *http.Response
+	var accessToken string
 	switch {
 	// case c.Format == reqtoken.FormatNotSupported:
 	default:
 		err = errors.New("an exchangable token was not found in the request")
+
 	case c.Format == reqtoken.FormatAPIKey:
 		x.log.Printf("exchanging apikey")
-		resp, err = x.exchangeAPIKey(r, &c)
+		accessToken, err = x.exchangeAPIKey(r, &c)
+
 	case c.Format == reqtoken.FormatJWT:
 		x.log.Printf("exchanging idtoken")
-		resp, err = x.exchangeIDToken(r, &c, "")
+		accessToken, err = x.exchangeIDToken(r, &c, "")
 	}
 	if err != nil {
 		http.Error(
@@ -95,24 +106,76 @@ func (x *Exchanger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accessToken, err := accessTokenFromResponse(resp)
-	if err != nil {
-		http.Error(
-			w, fmt.Sprintf(
-				"failed decoding exchanged token response: %v", err), http.StatusBadGateway)
-		return
-	}
-
 	w.Header().Set("Authorization", fmt.Sprintf("Bearer %s", accessToken))
-
 	// Explicit OK, we have no response data
 	w.WriteHeader(http.StatusOK)
 }
 
-func (x *Exchanger) exchangeAPIKey(r *http.Request, c *reqtoken.Components) (*http.Response, error) {
+func (x *Exchanger) exchangeIDToken(
+	r *http.Request, c *reqtoken.Components, audience string,
+) (string, error) {
+
+	urlEncodedParams, err := x.encodeClientSecret(r, c, audience)
+	if err != nil {
+		return "", err
+	}
+
+	if accessToken, ok := x.cacheRead(urlEncodedParams); ok {
+		log.Println("cache hit: id token")
+		return accessToken, nil
+	}
+	log.Println("cache miss: id token")
+
+	resp, err := x.exchangeClientCredentials(urlEncodedParams)
+	if err != nil {
+		return "", err
+	}
+
+	accessToken, err := accessTokenFromResponse(resp)
+	if err != nil {
+		return "", err
+	}
+
+	x.cacheToken(urlEncodedParams, accessToken)
+	return accessToken, nil
+}
+
+func (x *Exchanger) exchangeAPIKey(
+	r *http.Request, c *reqtoken.Components,
+) (string, error) {
+
+	urlEncodedParams, err := x.encodeAPIKey(r, c)
+	if err != nil {
+		return "", err
+	}
+
+	requestImage := urlEncodedParams + c.Data
+
+	if accessToken, ok := x.cacheRead(requestImage); ok {
+		log.Println("cache hit: api key")
+		return accessToken, nil
+	}
+
+	log.Println("cache miss: api key")
+	resp, err := x.exchangeBasicAuth(urlEncodedParams, c.Data)
+	if err != nil {
+		return "", err
+	}
+	accessToken, err := accessTokenFromResponse(resp)
+	if err != nil {
+		return "", err
+	}
+
+	x.cacheToken(requestImage, accessToken)
+	return accessToken, nil
+}
+
+func (x *Exchanger) encodeAPIKey(
+	r *http.Request, c *reqtoken.Components,
+) (string, error) {
 
 	if c.Format != reqtoken.FormatAPIKey {
-		return nil, fmt.Errorf("apikey to exchange must be robinbryce/apikey format")
+		return "", fmt.Errorf("apikey to exchange must be robinbryce/apikey format")
 	}
 
 	// Derive the resource from the original request uri
@@ -147,38 +210,16 @@ func (x *Exchanger) exchangeAPIKey(r *http.Request, c *reqtoken.Components) (*ht
 	data.Set("grant_type", grantTypeClientCredentials)
 	data.Set("resource", resource)
 
-	encoded := data.Encode()
-
-	xr, err := http.NewRequest("POST", x.cfg.ExchangeURL, strings.NewReader(encoded))
-	if err != nil {
-		return nil, err
-	}
-
-	// This is how we should do it
-	// Supply the clientid:secret in the Authorization: Basic <> header
-	xr.Header.Add(reqtoken.AuthorizationH, fmt.Sprintf("Basic %s", c.Data))
-
-	xr.Header.Add(contentTypeH, contentTypeURLEncoded)
-	xr.Header.Add(contentLengthH, strconv.Itoa(len(encoded)))
-	resp, err := x.c.Do(xr)
-	if err != nil {
-		return nil, err
-	}
-	// dump, err := httputil.DumpRequest(xr, true)
-	// if err != nil {
-	// 	x.log.Printf("failed to dump request: %v", err)
-	// } else {
-	// 	x.log.Printf(string(dump))
-	// }
-	return resp, nil
-
+	return data.Encode(), nil
 }
 
-// exchangeIDToken uses the last uri path segment is the audience for the new token.
-func (x *Exchanger) exchangeIDToken(r *http.Request, c *reqtoken.Components, audience string) (*http.Response, error) {
+// encodeClientSecret uses the last uri path segment is the audience for the new token.
+func (x *Exchanger) encodeClientSecret(
+	r *http.Request, c *reqtoken.Components, audience string,
+) (string, error) {
 
 	if c.Format != reqtoken.FormatJWT {
-		return nil, fmt.Errorf("id token to exchange must be jwt format")
+		return "", fmt.Errorf("id token to exchange must be jwt format")
 	}
 
 	// Infer the desired audience from the original path if the header is present
@@ -189,13 +230,13 @@ func (x *Exchanger) exchangeIDToken(r *http.Request, c *reqtoken.Components, aud
 
 	parts := strings.Split(path, "/")
 	if len(parts) == 0 {
-		return nil, fmt.Errorf("at least one path segment is requred to indicate the audience")
+		return "", fmt.Errorf("at least one path segment is requred to indicate the audience")
 	}
 
 	if audience == "" {
 		if c.Source == reqtoken.LastPathSegment {
 			if len(parts) < 2 {
-				return nil, fmt.Errorf("at least two path segments are require when the token is passed in the url")
+				return "", fmt.Errorf("at least two path segments are require when the token is passed in the url")
 			}
 			audience = parts[len(parts)-2]
 		} else {
@@ -217,14 +258,36 @@ func (x *Exchanger) exchangeIDToken(r *http.Request, c *reqtoken.Components, aud
 	// data.Set("scope", xxx) leave the scopes to the client configuration in the token exchange
 	data.Set("resource", resource) // fragment present in url causes error above
 
-	encoded := data.Encode()
+	return data.Encode(), nil
+}
 
-	xr, err := http.NewRequest("POST", x.cfg.ExchangeURL, strings.NewReader(encoded))
+func (x *Exchanger) exchangeClientCredentials(urlEncodedParams string) (*http.Response, error) {
+	xr, err := http.NewRequest("POST", x.cfg.ExchangeURL, strings.NewReader(urlEncodedParams))
 	if err != nil {
 		return nil, err
 	}
 	xr.Header.Add(contentTypeH, contentTypeURLEncoded)
-	xr.Header.Add(contentLengthH, strconv.Itoa(len(encoded)))
+	xr.Header.Add(contentLengthH, strconv.Itoa(len(urlEncodedParams)))
+	resp, err := x.c.Do(xr)
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+func (x *Exchanger) exchangeBasicAuth(urlEncodedParams, basicAuth string) (*http.Response, error) {
+
+	xr, err := http.NewRequest("POST", x.cfg.ExchangeURL, strings.NewReader(urlEncodedParams))
+	if err != nil {
+		return nil, err
+	}
+
+	// This is how we should do it
+	// Supply the clientid:secret in the Authorization: Basic <> header
+	xr.Header.Add(reqtoken.AuthorizationH, fmt.Sprintf("Basic %s", basicAuth))
+
+	xr.Header.Add(contentTypeH, contentTypeURLEncoded)
+	xr.Header.Add(contentLengthH, strconv.Itoa(len(urlEncodedParams)))
 	resp, err := x.c.Do(xr)
 	if err != nil {
 		return nil, err
@@ -257,4 +320,23 @@ func accessTokenFromResponse(r *http.Response) (string, error) {
 		}
 	}
 	// return "", errors.New("'method' not found in data. Was it a json-rpc payload ?")
+}
+
+func (x *Exchanger) cacheRead(requestImage string) (string, bool) {
+	cv := x.cache.Get(requestImage)
+	if cv == nil {
+		return "", false
+	}
+	v := cv.Value()
+	// Do we have a colision ?
+	if !strings.HasPrefix(v, requestImage) {
+		log.Println("cache key collision forcing evicttion")
+		return "", false
+	}
+	return v[len(requestImage):], true
+}
+
+func (x *Exchanger) cacheToken(
+	requestImage, token string) *ttlcache.Item[string, string] {
+	return x.cache.Set(requestImage, requestImage+token, ttlcache.DefaultTTL)
 }

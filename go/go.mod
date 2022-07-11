@@ -1,14 +1,17 @@
 module github.com/robinbryce/authex
 
-go 1.17
+go 1.18
 
 require (
 	github.com/gorilla/handlers v1.5.1
 	github.com/gorilla/mux v1.8.0
+	github.com/jellydator/ttlcache/v3 v3.0.0
 	github.com/robinbryce/apikeys v0.0.5
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.10.1
 )
+
+require golang.org/x/sync v0.0.0-20210220032951-036812b2e83c // indirect
 
 require (
 	github.com/felixge/httpsnoop v1.0.1 // indirect

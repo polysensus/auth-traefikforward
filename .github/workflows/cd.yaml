@@ -24,20 +24,6 @@ jobs:
           username: 'oauth2accesstoken'
           password: '${{ steps.auth.outputs.access_token }}'
 
-      #- run: |-
-      #    curl -v \
-      #      -o download.txt \
-      #      -H "Authorization: Bearer ${{ steps.auth.outputs.access_token }} \
-      #      https://storage.googleapis.com/download/storage/v1/b/artifacts.iona-1.appspot.com/o/test%2Fuploaded.txt?alt=media
-      #    cat download.txt
-
-      #    echo "hello" > hello.txt
-      #    curl -X POST -v \
-      #      -H "Authorization: Bearer ${{ steps.auth.outputs.access_token }} \
-      #      --data-ascii hello.txt \
-      #      -H "Content-Type: text/plain" \
-      #      "https://storage.googleapis.com/upload/storage/v1/b/artifacts.iona-1.appspot.com/o?uploadType=media&name=test/hello.${{ github.run_number }}.txt"
-
       - run: |-
           echo '${{ steps.auth.outputs.access_token }}' | docker login -u oauth2accesstoken --password-stdin https://eu.gcr.io/iona-1
 

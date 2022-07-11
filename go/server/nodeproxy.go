@@ -38,7 +38,8 @@ func (p *GethProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// otherwise it will be picked. Essentially this will need to grow into a
 	// mini loadbalancer specialised for ethereum rpc's
 	audience := "ethnode1"
-	var resp *http.Response
+
+	var accessToken string
 	switch {
 	// case c.Format == reqtoken.FormatNotSupported:
 	default:
@@ -47,22 +48,14 @@ func (p *GethProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 	case c.Format == reqtoken.FormatAPIKey:
-		resp, err = p.exchangeAPIKey(r, &c)
+		accessToken, err = p.exchangeAPIKey(r, &c)
 	case c.Format == reqtoken.FormatJWT:
-		resp, err = p.exchangeIDToken(r, &c, audience)
+		accessToken, err = p.exchangeIDToken(r, &c, audience)
 	}
 	if err != nil {
 		http.Error(
 			w, fmt.Sprintf(
 				"failed exchanging token: %v", err), http.StatusForbidden)
-		return
-	}
-
-	accessToken, err := accessTokenFromResponse(resp)
-	if err != nil {
-		http.Error(
-			w, fmt.Sprintf(
-				"failed decoding exchanged token response: %v", err), http.StatusBadGateway)
 		return
 	}
 
