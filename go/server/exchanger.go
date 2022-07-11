@@ -60,7 +60,7 @@ func NewExchanger(cfg *Config) *Exchanger {
 			ttlcache.WithTTL[string, string](cacheEntryTTL),
 		),
 	}
-	x.cache.Start()
+	go x.cache.Start()
 
 	return x
 }
