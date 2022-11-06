@@ -44,4 +44,4 @@ jobs:
         with:
           push: true
           context: .
-          tags: eu.gcr.io/hoy-dev-1/traefikforward:${{ steps.build_id.outputs.BUILD_ID }}
+          tags: eu.gcr.io/hoy-dev-1/auth-traefikforward:${{ steps.build_id.outputs.BUILD_ID }}
