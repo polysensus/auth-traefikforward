@@ -9,7 +9,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 
-	"github.com/polysensus/auth-tokenexchange/reqtoken"
+	"github.com/polysensus/auth-traefikforward/reqtoken"
 )
 
 type GethProxy struct {
