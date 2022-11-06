@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/polysensus/auth-tokenexchange/server"
+	"github.com/polysensus/auth-traefikforward/server"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
