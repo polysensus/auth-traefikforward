@@ -6,8 +6,8 @@ FROM golang:1.18 as build
 WORKDIR /authex
 
 # Install dependencies in go.mod and go.sum
-COPY go/go.mod go/go.sum ./
-RUN go mod download
+COPY go/go.mod ./
+RUN go mod download && go mod tidy
 
 # Copy rest of the application source code
 COPY go/ ./

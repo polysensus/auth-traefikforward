@@ -1,4 +1,4 @@
-module github.com/robinbryce/authex
+module github.com/polysensus/auth-traefikforward
 
 go 1.18
 

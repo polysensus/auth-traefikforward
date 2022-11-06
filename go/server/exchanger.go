@@ -13,7 +13,7 @@ import (
 
 	ttlcache "github.com/jellydator/ttlcache/v3"
 
-	"github.com/robinbryce/authex/reqtoken"
+	"github.com/polysensus/auth-tokenexchange/reqtoken"
 )
 
 const (

@@ -58,7 +58,7 @@ tasks:
       NAMESPACE: "{{.NAMESPACE}}"
       TAG: "{{.TAG}}"
       SKAFFOLD_DEFAULT_REPO: "{{.SKAFFOLD_DEFAULT_REPO}}"
-      APPNAME: '{{.APPNAME | default "authex"}}'
+      APPNAME: '{{.APPNAME | default "auth-traefikforward"}}'
       PYENV: '{{.PYENV | default "env"}}'
       PROFILE: '{{.PROFILE | default "local"}}'
       PORT: '{{.PORT | default "8401"}}'

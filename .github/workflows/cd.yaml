@@ -5,7 +5,7 @@ permissions:
   contents: read
 jobs:
   cd:
-    name: Build and push to iona's container registry
+    name: Build and push to polysensus container registry
     runs-on: ubuntu-latest
     steps:
       - uses: 'actions/checkout@v3'
@@ -15,17 +15,17 @@ jobs:
         uses: 'google-github-actions/auth@v0'
         with:
           token_format: 'access_token'
-          workload_identity_provider: 'projects/871349271977/locations/global/workloadIdentityPools/github-oidc-1/providers/github-provider'
-          service_account: 'gha-cd-authex@iona-1.iam.gserviceaccount.com'
+          workload_identity_provider: 'projects/723759996909/locations/global/workloadIdentityPools/github-oidc-1/providers/github-provider'
+          service_account: 'gha-cd-auth-traefikforward@hoy-dev-1.iam.gserviceaccount.com'
 
       - uses: 'docker/login-action@v1'
         with:
-          registry: 'eu.gcr.io/iona-1' # or REGION-docker.pkg.dev
+          registry: 'eu.gcr.io/hoy-dev-1' # or REGION-docker.pkg.dev
           username: 'oauth2accesstoken'
           password: '${{ steps.auth.outputs.access_token }}'
 
       - run: |-
-          echo '${{ steps.auth.outputs.access_token }}' | docker login -u oauth2accesstoken --password-stdin https://eu.gcr.io/iona-1
+          echo '${{ steps.auth.outputs.access_token }}' | docker login -u oauth2accesstoken --password-stdin https://eu.gcr.io/hoy-dev-1
 
 
       - id: build_id
@@ -44,4 +44,4 @@ jobs:
         with:
           push: true
           context: .
-          tags: eu.gcr.io/iona-1/authex:${{ steps.build_id.outputs.BUILD_ID }}
+          tags: eu.gcr.io/hoy-dev-1/auth-traefikforward:${{ steps.build_id.outputs.BUILD_ID }}
