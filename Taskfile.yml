@@ -33,7 +33,7 @@ tasks:
 
         CONTEXT=${CONTEXT:-$(kubectl config current-context)}
         CLUSTER=$(kubectl config get-contexts ${CONTEXT} --no-headers=true | tr -s ' ' | cut -d ' ' -f3)
-        SKAFFOLD_DEFAULT_REPO=${SKAFFOLD_DEFAULT_REPO:-eu.gcr.io/${CONTEXT}}
+        SKAFFOLD_DEFAULT_REPO=${SKAFFOLD_DEFAULT_REPO:-eu.gcr.io/hoy-dev-1}
         CONTEXT_NAMESPACE=${CONTEXT_NAMESPACE:-$(echo ${CONTEXT} | cut -d '-' -f1)}
         NAMESPACE=${NAMESPACE:-${CONTEXT_NAMESPACE}-${APPNAME}}
         DOMAIN=${DOMAIN:-localhost}
@@ -58,7 +58,7 @@ tasks:
       NAMESPACE: "{{.NAMESPACE}}"
       TAG: "{{.TAG}}"
       SKAFFOLD_DEFAULT_REPO: "{{.SKAFFOLD_DEFAULT_REPO}}"
-      APPNAME: '{{.APPNAME | default "traefikforward"}}'
+      APPNAME: '{{.APPNAME | default "auth-traefikforward"}}'
       PYENV: '{{.PYENV | default "env"}}'
       PROFILE: '{{.PROFILE | default "local"}}'
       PORT: '{{.PORT | default "8401"}}'
@@ -96,9 +96,9 @@ tasks:
         namespace: ${NAMESPACE}
         resources:
           - ./namespace.yaml
-          - ./../../authex
+          - ./../../base
         secretGenerator:
-          - name: authex-tokenendpoint-clientid-secret
+          - name: auth-tokenexchange-clientid-secret
             envs:
               - clientidsecret.env
         EOF
@@ -134,7 +134,7 @@ tasks:
         skaffold deploy \
             ${CONTEXT:+--kube-context ${CONTEXT}} \
             ${NAMESPACE:+-n $NAMESPACE} \
-            --label=user-deploy=$USER-authex \
+            --label=user-deploy=$USER-auth-traefikforward \
             --build-artifacts {{.BUILD_ARTIFACTS}}
 
   down:
@@ -145,7 +145,7 @@ tasks:
         for resource in $(kubectl api-resources --verbs=list --namespaced -o name); do
           for target in $(kubectl get \
             --show-kind \
-            -l user-deploy=$USER-authex \
+            -l user-deploy=$USER-auth-traefikforward \
             --ignore-not-found \
             -n $NAMESPACE \
             -o name ${resource} 2> /dev/null); do

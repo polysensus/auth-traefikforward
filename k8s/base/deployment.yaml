@@ -6,21 +6,21 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: authex
+  name: auth-traefikforward
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: authex
+      app: auth-traefikforward
   template:
     metadata:
       labels:
-        app: authex
+        app: auth-traefikforward
     spec:
 
       containers:
         - name: service
-          image: authex
+          image: auth-traefikforward
           ports:
             - containerPort: 8401
 
@@ -28,24 +28,24 @@ spec:
             - name: AUTHEX_ADDRESS
               valueFrom:
                 configMapKeyRef:
-                  name: authex
+                  name: auth-traefikforward
                   key: AUTHEX_ADDRESS
 
             - name: AUTHEX_PREFIX
               valueFrom:
                 configMapKeyRef:
-                  name: authex
+                  name: auth-traefikforward
                   key: AUTHEX_PREFIX
             - name: AUTHEX_PROXY_PREFIX
               valueFrom:
                 configMapKeyRef:
-                  name: authex
+                  name: auth-traefikforward
                   key: AUTHEX_PROXY_PREFIX
 
             - name: AUTHEX_EXCHANGEURL
               valueFrom:
                 configMapKeyRef:
-                  name: authex
+                  name: auth-traefikforward
                   key: AUTHEX_EXCHANGEURL
 
             # current approach is to deploy a single tokenendpoint and authex
@@ -55,13 +55,13 @@ spec:
             - name: AUTHEX_CLIENTID
               valueFrom:
                 secretKeyRef:
-                  name: authex-tokenendpoint-clientid-secret
+                  name: auth-traefikforward-auth-tokenexchange-clientid-secret
                   key: CLIENT_ID
 
             - name: AUTHEX_CLIENTSECRET
               valueFrom:
                 secretKeyRef:
-                  name: authex-tokenendpoint-clientid-secret
+                  name: auth-traefikforward-auth-tokenexchange-clientid-secret
                   key: CLIENT_SECRET
 
           readinessProbe:

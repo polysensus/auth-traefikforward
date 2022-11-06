@@ -4,8 +4,8 @@ metadata:
   name: ethnodetokenexchange
 spec:
   forwardAuth:
-    # address: http://authex:8401/node/exchange
-    address: http://authex.rrr9.svc.cluster.local:8401/node/exchange
+    # address: http://auth-traefikforward:8401/node/exchange
+    address: http://auth-traefikforward.rrr9.svc.cluster.local:8401/node/exchange
     authRequestHeaders:
       - "Accept"
       - "Content-Length"

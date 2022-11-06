@@ -14,7 +14,7 @@ build:
 
   artifacts:
     - context: .
-      image: authex
+      image: auth-traefikforward
 
 deploy:
   kustomize:

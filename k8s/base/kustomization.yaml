@@ -1,12 +1,12 @@
 commonLabels:
-  repository: github.com-robinbryce-authex
+  repository: github.com-polysensus-auth-tokenexchange
 resources:
   - deployment.yaml
   - service.yaml
   # - middleware-forwardauth.yaml
   # - middleware-removepath.yaml
 #configMapGenerator:
-#  - name: authex
+#  - name: auth-tokenexchange
 #    literals:
 #      - AUTHEX_ADDRESS=0.0.0.0:8401
 #      - AUTHEX_PREFIX=node/

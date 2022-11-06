@@ -11,7 +11,7 @@
       "portForward": true,
       "debug": [
         {
-          "image": "authex",
+          "image": "auth-traefikforward",
           "containerName": "server",
           "sourceFileMap": {
             "${workspaceFolder}/go": "/authex"
