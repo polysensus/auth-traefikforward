@@ -1,11 +1,11 @@
-name: Build and push to iona's container registry
+name: Build and push to the polysensus container registry
 on: [push]
 permissions:
   id-token: write
   contents: read
 jobs:
   cd:
-    name: Build and push to polysensus container registry
+    name: Build and push to the polysensus container registry
     runs-on: ubuntu-latest
     steps:
       - uses: 'actions/checkout@v3'
