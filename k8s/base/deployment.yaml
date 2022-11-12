@@ -55,13 +55,13 @@ spec:
             - name: AUTHEX_CLIENTID
               valueFrom:
                 secretKeyRef:
-                  name: auth-traefikforward-auth-tokenexchange-clientid-secret
+                  name: auth-tokenexchange-clientid-secret
                   key: CLIENT_ID
 
             - name: AUTHEX_CLIENTSECRET
               valueFrom:
                 secretKeyRef:
-                  name: auth-traefikforward-auth-tokenexchange-clientid-secret
+                  name: auth-tokenexchange-clientid-secret
                   key: CLIENT_SECRET
 
           readinessProbe:
