@@ -3,7 +3,9 @@
 # Use base golang image from Docker Hub
 FROM golang:1.18 as build
 
-WORKDIR /authex
+# For debuging via delve source mappings are determined by the build path, so
+# we make this the same as the run path to avoid many many wasted hours
+WORKDIR /service
 
 # Install dependencies in go.mod and go.sum
 COPY go/go.mod ./
@@ -19,6 +21,7 @@ ARG SKAFFOLD_GO_GCFLAGS
 RUN echo "Go gcflags: ${SKAFFOLD_GO_GCFLAGS}"
 RUN go build -gcflags="${SKAFFOLD_GO_GCFLAGS}" -mod=readonly -v -o /authex
 
+RUN find . && ls -la /authex
 # Now create separate deployment image
 FROM gcr.io/distroless/base
 
@@ -27,6 +30,6 @@ FROM gcr.io/distroless/base
 # See https://golang.org/pkg/runtime/
 ENV GOTRACEBACK=single
 
-WORKDIR /authex
+WORKDIR /service
 COPY --from=build /authex .
-ENTRYPOINT ["./authex"]
+ENTRYPOINT ["/service/authex"]
